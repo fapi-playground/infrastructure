@@ -1,0 +1,22 @@
+urls:
+  self:
+    issuer: https://sso.gregs-homelab.com
+    public: https://sso.api.gregs-homelab.com
+  consent: https://auth.gregs-homelab.com/ui/consent
+  login: https://auth.gregs-homelab.com/ui/login
+  logout: https://auth.gregs-homelab.com/ui/logout
+
+secrets:
+  system:
+    - youReallyNeedToChangeThis
+
+oidc:
+  subject_identifiers:
+    supported_types:
+      - pairwise
+      - public
+    pairwise:
+      salt: youReallyNeedToChangeThis
+
+log:
+  leak_sensitive_values: true

@@ -1,0 +1,79 @@
+serve:
+  public:
+    base_url: https://auth.gregs-homelab.com/
+  admin:
+    base_url: http://kratos:4434/
+
+selfservice:
+  default_browser_return_url: https://auth.gregs-homelab.com/ui
+  allowed_return_urls:
+    - https://auth.gregs-homelab.com/ui
+
+  methods:
+    password:
+      enabled: true
+
+  flows:
+    settings:
+      ui_url: https://auth.gregs-homelab.com/ui/settings
+
+
+    verification:
+      enabled: true
+      ui_url: https://auth.gregs-homelab.com/ui/verification
+      use: code
+      after:
+        default_browser_return_url: https://auth.gregs-homelab.com/ui/login
+
+    recovery:
+      enabled: true
+      ui_url: https://auth.gregs-homelab.com/ui/recovery
+      use: code
+
+    logout:
+      after:
+        default_browser_return_url: https://auth.gregs-homelab.com/ui/login
+
+    login:
+      ui_url: https://auth.gregs-homelab.com/ui/login
+
+    registration:
+      ui_url: https://auth.gregs-homelab.com/ui/registration
+      after:
+        password:
+          hooks:
+            - hook: session
+            - hook: show_verification_ui
+    error:
+      ui_url: https://auth.gregs-homelab.com/ui/error
+
+log:
+  level: debug
+  format: text
+  leak_sensitive_values: true
+
+secrets:
+  cookie:
+    - PLEASE-CHANGE-ME-I-AM-VERY-INSECURE
+  cipher:
+    - 32-LONG-SECRET-NOT-SECURE-AT-ALL
+
+hashers:
+  argon2:
+    parallelism: 1
+    memory: 128KB
+    iterations: 2
+    salt_length: 16
+    key_length: 16
+
+identity:
+  schemas:
+    - id: default
+      url: file:///etc/config/kratos/identity.schema.json
+
+courier:
+  smtp:
+    connection_uri: smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
+
+oauth2_provider:
+  url: http://hydra:4445
