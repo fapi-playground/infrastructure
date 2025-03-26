@@ -1,0 +1,232 @@
+# This docker-compose file sets up ORY Kratos, ORY Hydra, and this app in a network and configures
+# in such a way that ORY Kratos is the Login Provider for ORY Hydra.
+
+version: "3.7"
+
+services:
+  hydra-migrate:
+    image: oryd/hydra:v2.3.0
+    depends_on:
+      - postgres-hydra
+    environment:
+      - DSN=postgres://hydra:secret@postgres-hydra:5432/hydra?sslmode=disable&max_conns=20&max_idle_conns=4
+    command: migrate -c /etc/config/hydra/hydra.yml sql up -e --yes
+    pull_policy: missing
+    volumes:
+      - type: bind
+        source: ./hydra
+        target: /etc/config/hydra
+    restart: on-failure
+    networks:
+      - intranet
+
+  hydra:
+    image: oryd/hydra:v2.3.0
+    depends_on:
+      - hydra-migrate
+      - postgres-hydra
+    ports:
+      - "4444:4444" # Public port
+      - "4445:4445" # Admin port
+      - "5555:5555" # Port for hydra token user
+    command: serve -c /etc/config/hydra/hydra.yml all
+    volumes:
+      - type: bind
+        source: ./hydra
+        target: /etc/config/hydra
+    pull_policy: missing
+    restart: on-failure
+    environment:
+      - DSN=postgres://hydra:secret@postgres-hydra:5432/hydra?sslmode=disable&max_conns=20&max_idle_conns=4
+    networks:
+      - intranet
+
+  kratos-selfservice-ui-node:
+    image: oryd/kratos-selfservice-ui-node:v1.3.1
+    environment:
+      - PORT=4455
+      - SECURITY_MODE=standalone
+      - BASE_PATH=/ui
+      - HYDRA_ADMIN_URL=http://hydra:4445
+      - KRATOS_PUBLIC_URL=http://kratos:4433
+      - KRATOS_BROWSER_URL=https://auth.gregs-homelab.com
+      - COOKIE_SECRET=changeme
+      - CSRF_COOKIE_NAME=ory_csrf_ui
+      - CSRF_COOKIE_SECRET=changeme
+
+    ports:
+      - "4455:4455"
+    networks:
+      - intranet
+    volumes:
+      - /tmp/ui-node/logs:/root/.npm/_logs
+    restart: on-failure
+
+  kratos-migrate:
+    image: oryd/kratos:v1.3.1
+    environment:
+      - DSN=sqlite:///var/lib/sqlite/db.sqlite?_fk=true&mode=rwc
+    volumes:
+      - type: volume
+        source: kratos-sqlite
+        target: /var/lib/sqlite
+        read_only: false
+      - type: bind
+        source: ./kratos
+        target: /etc/config/kratos
+    command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
+    restart: on-failure
+    networks:
+      - intranet
+
+  kratos:
+    depends_on:
+      - kratos-migrate
+    image: oryd/kratos:v1.3.1
+    ports:
+      - "4433:4433" # public
+      - "4434:4434" # admin
+    restart: unless-stopped
+    environment:
+      - DSN=sqlite:///var/lib/sqlite/db.sqlite?_fk=true
+    command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
+    volumes:
+      - type: volume
+        source: kratos-sqlite
+        target: /var/lib/sqlite
+        read_only: false
+      - type: bind
+        source: ./kratos
+        target: /etc/config/kratos
+    networks:
+      - intranet
+
+  postgres-hydra:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=hydra
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=hydra
+    networks:
+      - intranet
+
+  # dependencies for optionally generating default configs + secrets
+  generate-synapse-secrets:
+    image: ghcr.io/element-hq/synapse:latest
+    user: $USER_ID:$GROUP_ID
+    restart: "no"
+    volumes:
+      - ${VOLUME_PATH}/data/synapse:/data:rw
+      - ${VOLUME_PATH}/init/generate-synapse-secrets.sh:/entrypoint.sh
+    env_file: .env
+    environment:
+      SYNAPSE_CONFIG_DIR: /data
+      SYNAPSE_CONFIG_PATH: /data/homeserver.yaml.default
+      SYNAPSE_SERVER_NAME: ${DOMAIN}
+      SYNAPSE_REPORT_STATS: ${REPORT_STATS}
+    entrypoint: "/entrypoint.sh"
+
+  # dependency for templating /data-template into /data (having extracted any secrets from any default generated configs)
+  init:
+    build: init
+    user: $USER_ID:$GROUP_ID
+    restart: "no"
+    volumes:
+      - ${VOLUME_PATH}/secrets:/secrets
+      - ${VOLUME_PATH}/data:/data
+      - ${VOLUME_PATH}/data-template:/data-template
+      - ${VOLUME_PATH}/init/init.sh:/init.sh
+    command: "/init.sh"
+    env_file: .env
+    depends_on:
+      generate-synapse-secrets:
+        condition: service_completed_successfully
+
+  postgres:
+    image: postgres:latest
+    restart: unless-stopped
+    volumes:
+      - ${VOLUME_PATH}/data/postgres:/var/lib/postgresql/data:rw
+      - ${VOLUME_PATH}/scripts/create-multiple-postgresql-databases.sh:/docker-entrypoint-initdb.d/create-multiple-postgresql-databases.sh
+    networks:
+      - intranet
+    environment:
+      POSTGRES_MULTIPLE_DATABASES: synapse,mas
+      POSTGRES_USER: matrix # FIXME: use different username+passwords for synapse & MAS DBs.
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+      PGDATA: /var/lib/postgresql/data/data # otherwise it clashes with .gitkeep in the parent dir
+    secrets:
+      - postgres_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matrix"]
+      start_period: "1s"
+      interval: "1s"
+      timeout: "5s"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  synapse:
+    image: ghcr.io/element-hq/synapse:latest
+    user: $USER_ID:$GROUP_ID
+    restart: unless-stopped
+    volumes:
+      - ${VOLUME_PATH}/data/synapse:/data:rw
+    ports:
+      - 8008:8008
+    networks:
+      - intranet
+    environment:
+      SYNAPSE_CONFIG_DIR: /data
+      SYNAPSE_CONFIG_PATH: /data/homeserver.yaml
+    secrets:
+      - synapse_signing_key
+    depends_on:
+      postgres:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+
+  # as a basic local MTA
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: unless-stopped
+    # ports:
+      # - 8025:8025
+      # - 1025:1025
+    networks:
+      - intranet
+
+  element-web:
+    image: vectorim/element-web:latest
+    restart: unless-stopped
+    ports:
+      - 8080:80
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80/version || exit 1"]
+      start_period: "5s"
+      interval: "15s"
+      timeout: "5s"
+    networks:
+      - intranet
+    volumes:
+      - ${VOLUME_PATH}/data/element-web/config.json:/app/config.json
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+
+networks:
+  intranet:
+
+volumes:
+  kratos-sqlite:
+  synapse-media:
+
+
+secrets:
+  postgres_password:
+    file: secrets/postgres/postgres_password
+  synapse_signing_key:
+    file: secrets/synapse/signing.key

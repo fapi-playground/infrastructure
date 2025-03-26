@@ -1,0 +1,11 @@
+/secrets.env
+/*.rpm
+/synapse/*.key
+
+.DS_Store
+**/.DS_Store
+
+.env
+.env.orig
+data
+secrets

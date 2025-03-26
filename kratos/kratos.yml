@@ -73,7 +73,9 @@ identity:
 
 courier:
   smtp:
-    connection_uri: smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
+    connection_uri: smtps://greg45235424:246AJEEAXbmiGqJG@mail.smtp2go.com:8465
+    from_address: greg@gregs-homelab.com
+    from_name: Greg
 
 oauth2_provider:
   url: http://hydra:4445

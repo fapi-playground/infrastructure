@@ -23,15 +23,6 @@
 # https://element-hq.github.io/synapse/latest/usage/configuration/config_documentation.html
 server_name: "gregs-homelab.com"
 pid_file: DATADIR/homeserver.pid
-listeners:
-  - port: 8448
-    tls: false
-    type: http
-    x_forwarded: true
-    bind_addresses: ['::1', '127.0.0.1']
-    resources:
-      - names: [client, federation]
-        compress: false
 
 report_stats: false
 
@@ -53,10 +44,6 @@ oidc_providers:
     idp_name: "Local Ory Hydra"
     skip_verification: true # todo: remove when https implemented
     issuer: "https://sso.gregs-homelab.com"
-    client_id: "<id>"
-    client_secret: "<secret>"
+    client_id: "946790d0-31ec-4d80-8b59-c0d171b46f33"
+    client_secret: "ghiY92Y10y6Cdoed-odfkH0ZU9"
     scopes: ["openid", "profile", "email"]
-    user_mapping_provider:
-      config:
-        localpart_template: "{{ user.name }}"
-        display_name_template: "{{ user.name|capitalize }}"
