@@ -7,14 +7,13 @@ services:
   hydra-migrate:
     image: oryd/hydra:v2.3.0
     depends_on:
-      - postgres-hydra
-    environment:
-      - DSN=postgres://hydra:secret@postgres-hydra:5432/hydra?sslmode=disable&max_conns=20&max_idle_conns=4
+      postgres:
+        condition: service_healthy
     command: migrate -c /etc/config/hydra/hydra.yml sql up -e --yes
     pull_policy: missing
     volumes:
       - type: bind
-        source: ./hydra
+        source: ./data/hydra
         target: /etc/config/hydra
     restart: on-failure
     networks:
@@ -23,8 +22,16 @@ services:
   hydra:
     image: oryd/hydra:v2.3.0
     depends_on:
-      - hydra-migrate
-      - postgres-hydra
+      postgres:
+        condition: service_healthy
+      hydra-migrate:
+        condition: service_completed_successfully
+    healthcheck:  
+      test: ["CMD-SHELL", " netstat -an | grep -q 4444"]  
+      interval: 1s  
+      timeout: 1s  
+      retries: 10  
+      start_period: 1s
     ports:
       - "4444:4444" # Public port
       - "4445:4445" # Admin port
@@ -32,12 +39,10 @@ services:
     command: serve -c /etc/config/hydra/hydra.yml all
     volumes:
       - type: bind
-        source: ./hydra
+        source: ./data/hydra
         target: /etc/config/hydra
     pull_policy: missing
     restart: on-failure
-    environment:
-      - DSN=postgres://hydra:secret@postgres-hydra:5432/hydra?sslmode=disable&max_conns=20&max_idle_conns=4
     networks:
       - intranet
 
@@ -49,11 +54,10 @@ services:
       - BASE_PATH=/ui
       - HYDRA_ADMIN_URL=http://hydra:4445
       - KRATOS_PUBLIC_URL=http://kratos:4433
-      - KRATOS_BROWSER_URL=https://auth.gregs-homelab.com
-      - COOKIE_SECRET=changeme
+      - KRATOS_BROWSER_URL=https://auth.${DOMAIN}
+      - COOKIE_SECRET=changeme # TODO: change
       - CSRF_COOKIE_NAME=ory_csrf_ui
-      - CSRF_COOKIE_SECRET=changeme
-
+      - CSRF_COOKIE_SECRET=changeme # TODO: change
     ports:
       - "4455:4455"
     networks:
@@ -64,15 +68,9 @@ services:
 
   kratos-migrate:
     image: oryd/kratos:v1.3.1
-    environment:
-      - DSN=sqlite:///var/lib/sqlite/db.sqlite?_fk=true&mode=rwc
     volumes:
-      - type: volume
-        source: kratos-sqlite
-        target: /var/lib/sqlite
-        read_only: false
       - type: bind
-        source: ./kratos
+        source: ./data/kratos
         target: /etc/config/kratos
     command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
     restart: on-failure
@@ -81,32 +79,20 @@ services:
 
   kratos:
     depends_on:
-      - kratos-migrate
+      postgres:
+        condition: service_healthy
+      kratos-migrate:
+        condition: service_completed_successfully
     image: oryd/kratos:v1.3.1
     ports:
       - "4433:4433" # public
       - "4434:4434" # admin
     restart: unless-stopped
-    environment:
-      - DSN=sqlite:///var/lib/sqlite/db.sqlite?_fk=true
     command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
     volumes:
-      - type: volume
-        source: kratos-sqlite
-        target: /var/lib/sqlite
-        read_only: false
       - type: bind
-        source: ./kratos
+        source: ${VOLUME_PATH}/data/kratos
         target: /etc/config/kratos
-    networks:
-      - intranet
-
-  postgres-hydra:
-    image: postgres:16
-    environment:
-      - POSTGRES_USER=hydra
-      - POSTGRES_PASSWORD=secret
-      - POSTGRES_DB=hydra
     networks:
       - intranet
 
@@ -127,6 +113,43 @@ services:
     entrypoint: "/entrypoint.sh"
 
   # dependency for templating /data-template into /data (having extracted any secrets from any default generated configs)
+  init-auth:
+    build: init-auth
+    user: $USER_ID:$GROUP_ID
+    restart: "no"
+    volumes:
+      - ${VOLUME_PATH}/secrets:/secrets
+      - ${VOLUME_PATH}/data:/data
+      - ${VOLUME_PATH}/data-template:/data-template
+      - ${VOLUME_PATH}/init-auth/init.sh:/init.sh
+    command: "/init.sh"
+    env_file: .env
+
+  # dependency for creating hydra clients
+  create-clients:
+    image: oryd/hydra:v2.3.0 
+    user: $USER_ID:$GROUP_ID
+    restart: "no"
+    entrypoint: "hydra create client \
+      --name synapse \
+      --endpoint http://hydra:4445 \
+      --grant-type authorization_code,refresh_token \
+      --response-type code,id_token \
+      --format json \
+      --scope openid --scope profile --scope email \
+      --redirect-uri https://matrix.${DOMAIN}/_synapse/client/oidc/callback \
+      --token-endpoint-auth-method none \
+      --skip-consent"
+    env_file: .env
+    depends_on:
+      generate-synapse-secrets:
+        condition: service_completed_successfully
+      hydra:
+        condition: service_healthy
+    networks:
+      - intranet
+
+  # dependency for templating /data-template into /data (having extracted any secrets from any default generated configs)
   init:
     build: init
     user: $USER_ID:$GROUP_ID
@@ -141,30 +164,39 @@ services:
     depends_on:
       generate-synapse-secrets:
         condition: service_completed_successfully
+      create-clients:
+        condition: service_completed_successfully
+    networks:
+      - intranet
 
   postgres:
     image: postgres:latest
     restart: unless-stopped
     volumes:
-      - ${VOLUME_PATH}/data/postgres:/var/lib/postgresql/data:rw
-      - ${VOLUME_PATH}/scripts/create-multiple-postgresql-databases.sh:/docker-entrypoint-initdb.d/create-multiple-postgresql-databases.sh
+      - type: volume
+        source: postgres-data
+        target: /var/lib/postgresql/data
+        read_only: false
+      - type: bind
+        source: ${VOLUME_PATH}/scripts/create-multiple-postgresql-databases.sh
+        target: /docker-entrypoint-initdb.d/create-multiple-postgresql-databases.sh
     networks:
       - intranet
     environment:
-      POSTGRES_MULTIPLE_DATABASES: synapse,mas
-      POSTGRES_USER: matrix # FIXME: use different username+passwords for synapse & MAS DBs.
+      POSTGRES_MULTIPLE_DATABASES: synapse,hydra,kratos
+      POSTGRES_USER: postgres # FIXME: use different username+passwords for synapse, kratos and hydra DBs.
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
       PGDATA: /var/lib/postgresql/data/data # otherwise it clashes with .gitkeep in the parent dir
     secrets:
       - postgres_password
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U matrix"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       start_period: "1s"
       interval: "1s"
       timeout: "5s"
     depends_on:
-      init:
+      init-auth:
         condition: service_completed_successfully
 
   synapse:
@@ -193,8 +225,8 @@ services:
     image: mailhog/mailhog:latest
     restart: unless-stopped
     # ports:
-      # - 8025:8025
-      # - 1025:1025
+    # - 8025:8025
+    # - 1025:1025
     networks:
       - intranet
 
@@ -221,7 +253,7 @@ networks:
   intranet:
 
 volumes:
-  kratos-sqlite:
+  postgres-data:
   synapse-media:
 
 

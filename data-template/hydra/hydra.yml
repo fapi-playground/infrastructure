@@ -1,0 +1,22 @@
+urls:
+  self:
+    issuer: https://sso.${DOMAIN}
+    public: https://sso.${DOMAIN}
+  consent: https://auth.${DOMAIN}/ui/consent
+  login: https://auth.${DOMAIN}/ui/login
+  logout: https://auth.${DOMAIN}/ui/logout
+
+secrets:
+  system:
+    - ${SECRETS_HYDRA_SYSTEM}
+
+oidc:
+  subject_identifiers:
+    supported_types:
+      - pairwise
+      - public
+    pairwise:
+      salt: ${SECRETS_HYDRA_PAIRWISE_SALT}
+
+dsn: postgres://postgres:${SECRETS_POSTGRES_PASSWORD}@postgres:5432/hydra?sslmode=disable&max_conns=20&max_idle_conns=4
+

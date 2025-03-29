@@ -1,0 +1,84 @@
+serve:
+  public:
+    base_url: https://auth.${DOMAIN}/
+  admin:
+    base_url: http://kratos:4434/
+
+selfservice:
+  default_browser_return_url: https://auth.${DOMAIN}/ui
+  allowed_return_urls:
+    - https://auth.${DOMAIN}/ui
+
+  methods:
+    password:
+      enabled: true
+
+  flows:
+    settings:
+      ui_url: https://auth.${DOMAIN}/ui/settings
+
+
+    verification:
+      enabled: true
+      ui_url: https://auth.${DOMAIN}/ui/verification
+      use: code
+      after:
+        default_browser_return_url: https://auth.${DOMAIN}/ui/login
+
+    recovery:
+      enabled: true
+      ui_url: https://auth.${DOMAIN}/ui/recovery
+      use: code
+
+    logout:
+      after:
+        default_browser_return_url: https://auth.${DOMAIN}/ui/login
+
+    login:
+      ui_url: https://auth.${DOMAIN}/ui/login
+
+    registration:
+      ui_url: https://auth.${DOMAIN}/ui/registration
+      after:
+        password:
+          hooks:
+            - hook: session
+            - hook: show_verification_ui
+    error:
+      ui_url: https://auth.${DOMAIN}/ui/error
+
+log:
+  level: debug
+  format: text
+  leak_sensitive_values: false 
+
+secrets:
+  cookie:
+    - ${SECRETS_KRATOS_COOKIE}
+  cipher:
+    - ${SECRETS_KRATOS_CIPHER}
+
+hashers:
+  argon2:
+    parallelism: 1
+    memory: 128KB
+    iterations: 2
+    salt_length: 16
+    key_length: 16
+
+identity:
+  schemas:
+    - id: default
+      url: file:///etc/config/kratos/identity.schema.json
+
+courier:
+  smtp:
+    connection_uri: smtps://${SMTP2GO_USER}:${SMTP2GO_PASS}@mail.smtp2go.com:8465
+    from_address: greg@${DOMAIN}
+    from_name: Greg
+
+oauth2_provider:
+  url: http://hydra:4445
+
+dsn: postgres://postgres:${SECRETS_POSTGRES_PASSWORD}@postgres:5432/kratos?sslmode=disable&max_conns=20&max_idle_conns=4
+
