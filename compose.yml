@@ -4,6 +4,39 @@
 version: "3.7"
 
 services:
+  nginx:
+    image: nginx:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    # shutdown fast so we can iterate rapidly on compose.yml
+    stop_grace_period: 0s
+    volumes:
+      - ${VOLUME_PATH}/data/nginx/conf.d:/etc/nginx/conf.d
+      - ${VOLUME_PATH}/data/nginx/www:/var/www
+      - ${VOLUME_PATH}/data/ssl:/etc/nginx/ssl
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    networks:
+      - intranet
+
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - ${VOLUME_PATH}/data/certbot/conf:/etc/letsencrypt
+      - ${VOLUME_PATH}/data/certbot/www:/var/www/certbot
+      - ${VOLUME_PATH}/data/ssl:/data/ssl
+    entrypoint: "/bin/sh -c 'trap exit TERM; \
+                 while [ -e /etc/letsencrypt/live ]; \
+                 do sleep 30; certbot --webroot -w /var/www/certbot renew; \
+                 cp /etc/letsencrypt/live/$DOMAIN/*.pem /data/ssl; \
+                 sleep 12h & wait $${!}; \
+                 done;'"
+
   hydra-migrate:
     image: oryd/hydra:v2.3.0
     depends_on:
@@ -32,10 +65,6 @@ services:
       timeout: 1s  
       retries: 10  
       start_period: 1s
-    ports:
-      - "4444:4444" # Public port
-      - "4445:4445" # Admin port
-      - "5555:5555" # Port for hydra token user
     command: serve -c /etc/config/hydra/hydra.yml all
     volumes:
       - type: bind
@@ -58,8 +87,6 @@ services:
       - COOKIE_SECRET=changeme # TODO: change
       - CSRF_COOKIE_NAME=ory_csrf_ui
       - CSRF_COOKIE_SECRET=changeme # TODO: change
-    ports:
-      - "4455:4455"
     networks:
       - intranet
     volumes:
@@ -84,9 +111,6 @@ services:
       kratos-migrate:
         condition: service_completed_successfully
     image: oryd/kratos:v1.3.1
-    ports:
-      - "4433:4433" # public
-      - "4434:4434" # admin
     restart: unless-stopped
     command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
     volumes:
@@ -198,8 +222,6 @@ services:
     restart: unless-stopped
     volumes:
       - ${VOLUME_PATH}/data/synapse:/data:rw
-    ports:
-      - 8008:8008
     networks:
       - intranet
     environment:
@@ -216,8 +238,6 @@ services:
   element-web:
     image: vectorim/element-web:latest
     restart: unless-stopped
-    ports:
-      - 8080:80
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80/version || exit 1"]
       start_period: "5s"
