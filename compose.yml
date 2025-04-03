@@ -126,20 +126,13 @@ services:
     env_file: .env
 
   # dependency for creating hydra clients
-  create-clients:
-    image: oryd/hydra:v2.3.0 
-    user: $USER_ID:$GROUP_ID
+  hydra-create-clients:
+    build: create-clients 
     restart: "no"
-    entrypoint: "hydra create client \
-      --name synapse \
-      --endpoint http://hydra:4445 \
-      --grant-type authorization_code,refresh_token \
-      --response-type code,id_token \
-      --format json \
-      --scope openid --scope profile --scope email \
-      --redirect-uri https://matrix.${DOMAIN}/_synapse/client/oidc/callback \
-      --token-endpoint-auth-method none \
-      --skip-consent"
+    entrypoint: "/create-clients.sh"
+    volumes:
+      - ${VOLUME_PATH}/data/hydra/clients/:/clients/
+      - ${VOLUME_PATH}/create-clients/entrypoint.sh:/create-clients.sh
     env_file: .env
     depends_on:
       generate-synapse-secrets:
@@ -164,7 +157,7 @@ services:
     depends_on:
       generate-synapse-secrets:
         condition: service_completed_successfully
-      create-clients:
+      hydra-create-clients:
         condition: service_completed_successfully
     networks:
       - intranet

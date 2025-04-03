@@ -1,0 +1,22 @@
+[
+  {
+    "client_id": "element",
+    "client_name": "element",
+    "redirect_uris": [
+      "https://matrix.${DOMAIN}/_synapse/client/oidc/callback"
+    ],
+    "grant_types": [
+      "authorization_code",
+      "refresh_token"
+    ],
+    "response_types": [
+      "code",
+      "id_token"
+    ],
+    "scope": "openid profile email",
+    "subject_type": "public",
+    "token_endpoint_auth_method": "none",
+    "skip_consent": true
+  }
+]
+

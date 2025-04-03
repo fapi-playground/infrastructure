@@ -12,7 +12,6 @@ mkdir -p secrets/{postgres,synapse,hydra,kratos}
 # create blank secrets to avoid docker creating empty directories in the host
 touch secrets/postgres/postgres_password \
       secrets/synapse/signing.key \
-      secrets/synapse/client_id \
       secrets/hydra/system_secret \
       secrets/hydra/pairwise_salt \
       secrets/kratos/cookie_secret \

@@ -90,6 +90,6 @@ oidc_providers:
     idp_name: "Homelab SSO"
     skip_verification: true # todo: remove when https implemented
     issuer: "https://sso.${DOMAIN}"
-    client_id: "${SECRETS_SYNAPSE_CLIENT_ID}"
+    client_id: "element"
     scopes: ["openid", "profile", "email"]
 # vim:ft=yaml
