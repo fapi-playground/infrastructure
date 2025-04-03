@@ -220,16 +220,6 @@ services:
       init:
         condition: service_completed_successfully
 
-  # as a basic local MTA
-  mailhog:
-    image: mailhog/mailhog:latest
-    restart: unless-stopped
-    # ports:
-    # - 8025:8025
-    # - 1025:1025
-    networks:
-      - intranet
-
   element-web:
     image: vectorim/element-web:latest
     restart: unless-stopped
