@@ -22,11 +22,6 @@ then
 	mv /data/synapse/${DOMAIN}.signing.key /secrets/synapse/signing.key
 fi
 
-if [[ ! -s /secrets/synapse/client_id ]]
-then
-	mkdir -p /secrets/synapse
-	curl http://hydra:4445/admin/clients | jq -c '.[] | select (.client_name | contains("synapse"))' | jq -r '.client_id' > /secrets/synapse/client_id
-fi
 
 # TODO: compare the default generated config with our templates to see if our templates are stale
 # we'd have to strip out the secrets from the generated configs to be able to diff them sensibly
@@ -50,7 +45,6 @@ export DOLLAR='$' # evil hack to escape dollars in config files
 	export SECRETS_SYNAPSE_REGISTRATION_SHARED_SECRET=$(</secrets/synapse/registration_shared_secret)
 	export SECRETS_SYNAPSE_MACAROON_SECRET_KEY=$(</secrets/synapse/macaroon_secret_key)
 	export SECRETS_SYNAPSE_FORM_SECRET=$(</secrets/synapse/form_secret)
-	export SECRETS_SYNAPSE_CLIENT_ID=$(</secrets/synapse/client_id)
 	export SECRETS_POSTGRES_PASSWORD=$(</secrets/postgres/postgres_password)
 	template "/data-template/synapse"
 )
