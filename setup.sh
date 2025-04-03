@@ -6,7 +6,7 @@ set -e
 # set up data & secrets dir with the right ownerships in the default location
 # to stop docker autocreating them with random owners.
 # originally these were checked into the git repo, but that's pretty ugly, so doing it here instead.
-mkdir -p data/{element-web,postgres,synapse,hydra,kratos}
+mkdir -p data/{element-web,postgres,synapse,hydra,kratos,nginx}
 mkdir -p secrets/{postgres,synapse,hydra,kratos}
 
 # create blank secrets to avoid docker creating empty directories in the host

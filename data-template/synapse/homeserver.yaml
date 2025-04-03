@@ -1,4 +1,3 @@
-${CONFIG_HEADER}
 
 # Configuration file for Synapse.
 #
@@ -45,11 +44,6 @@ trusted_key_servers:
 
 public_baseurl: https://${HOMESERVER_FQDN}/
 suppress_key_server_warning: true
-
-instance_map:
-  main:
-    host: 'synapse'
-    port: 9093
 
 # as we want our first launch and subsequent upgrades to go as fast
 # as possible don't sleep between background updates
