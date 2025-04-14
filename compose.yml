@@ -251,6 +251,26 @@ services:
       init:
         condition: service_completed_successfully
 
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    user: $USER_ID:$GROUP_ID
+    ports:
+      - "8096:8096"
+    volumes:
+      - type: bind
+        source: ${VOLUME_PATH}/media/jellyfin
+        target: /media
+      # Optional - extra fonts to be used during transcoding with subtitle burn-in
+      - type: bind
+        source: /path/to/fonts
+        target: /usr/local/share/fonts/custom
+        read_only: true
+    restart: 'unless-stopped'
+    # Optional - alternative address used for autodiscovery
+    environment:
+      - JELLYFIN_PublishedServerUrl=https://${DOMAIN}
+    networks:
+      - intranet
 
 networks:
   intranet:
